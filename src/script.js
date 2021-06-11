@@ -6,13 +6,15 @@ import { XRControllerModelFactory } from 'three/examples/jsm/webxr/XRControllerM
 import { seededRandom } from 'three/src/math/MathUtils'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { PlaneGeometry } from 'three'
 
 //Setting up variables
 let camera, scene, renderer
 let controller1, controller2
 let controllerGrip1, controllerGrip2
 
-let room
+// let room
+let floor
 
 let count = 0
 const radius = 0.03
@@ -38,7 +40,7 @@ function init() {
    * Scene
    */
   scene = new THREE.Scene()
-  scene.background = new THREE.Color(0x505050)
+  scene.background = new THREE.Color(0x000)
 
 
 
@@ -49,16 +51,16 @@ function init() {
     50,
     window.innerWidth / window.innerHeight,
     0.1,
-    20
+    100
   )
   camera.position.set(0, 1.6, 3)
 
   /**
    * Light
    */
-  // const hemiLight = new THREE.HemisphereLight( 0x202020, 0x444444 );
-  // hemiLight.position.set( 0, 300, 0 );
-  // scene.add( hemiLight );
+  const pointLight = new THREE.PointLight( 0xff0000, 1, 100 );
+  pointLight.position.set( 0, 2, 0 );
+  scene.add( pointLight );
 
   const light = new THREE.DirectionalLight(0xaaaaaa)
   light.position.set(0, 100, 0).normalize()
@@ -79,12 +81,29 @@ function init() {
   // grabVR.grabableObjects().push(grabable);
 
   //room
-  room = new THREE.LineSegments(
-    new BoxLineGeometry(12, 12, 12, 10, 10, 10),
-    new THREE.LineBasicMaterial({ color: 0x34cceb })
+  // room = new THREE.LineSegments(
+  //   new BoxLineGeometry(12, 12, 12, 10, 10, 10),
+  //   new THREE.LineBasicMaterial({ color: 0x34cceb })
+  // )
+
+  // room.geometry.translate(0, 6, 0)
+  // scene.add(room)
+
+  const particleTexture = new THREE.TextureLoader().load('/textures/particles/5.png')
+
+  // floor = new THREE.Mesh(
+  //   new PlaneGeometry(100, 100, 20, 20),
+  //   new THREE.MeshStandardMaterial({map: floorTexture})
+  // )
+
+  floor = new THREE.LineSegments(
+    new BoxLineGeometry(100, 0, 100, 100, 0, 100),
+    new THREE.LineBasicMaterial({ color: 0xff2222 })
   )
-  room.geometry.translate(0, 6, 0)
-  scene.add(room)
+
+  scene.add(floor)
+  
+  
 
   // const geometry = new THREE.IcosahedronGeometry(radius, 3)
   const geometry = new THREE.BoxGeometry(0.05, 0.05, 1)
@@ -96,13 +115,14 @@ function init() {
       lasersMaterial
     )
 
-    object.transparent = true
+    object.material.transparent = true
+    object.material.opacity = 0
 
     object.userData.velocity = new THREE.Vector3()
 
-    room.add(object)
+    floor.add(object)
   }
-
+ 
   /**
    * Renderer
    */
@@ -217,6 +237,29 @@ function init() {
     }
   )
 
+  loader.load(
+    '/models/space_invader/scene.gltf',
+    (gltf) => {
+      
+      const invader = gltf.scene
+      invader.scale.set(0.05, 0.05, 0.05)
+      invader.children[0].position.x = 3
+      scene.add(invader)
+      invader.position.z = 3
+      invader.position.y = 2
+
+      // generateInvaders(invader)
+      
+
+    },
+    (xhr) => {
+      console.log((xhr.loaded / xhr.total) * 100 + '% loaded')
+    },
+    (error) => {
+      console.log('An error happened')
+    }
+  )
+
   
   //resize event listener
   window.addEventListener('resize', onWindowResize)
@@ -266,9 +309,9 @@ function buildController(data) {
 function handleController(controller) {
   //check if controller(trigger) is pulled
   if (controller.userData.isSelecting && !controller.cooldown) {
-    const object = room.children[count++]
+    const object = floor.children[count++]
 
-    object.transparent = false
+    object.material.opacity = 1
 
     object.position.copy(controller.position)
     object.rotation.copy(controller.rotation)
@@ -277,11 +320,26 @@ function handleController(controller) {
     object.userData.velocity.z = Math.random() - 15
     object.userData.velocity.applyQuaternion(controller.quaternion)
 
-    if (count === room.children.length) count = 0
+    if (count === floor.children.length) count = 0
     controller.cooldown = true
     setTimeout(() => {
       controller.cooldown = false
     }, 100)
+  }
+}
+
+function generateInvaders(invader) {
+  const count = 50
+
+  for (let i = 0; i < count; i++) {
+    const newInvader = invader.clone()
+    const randomX = (Math.random() - 0.5) * 100
+    const randomY = (Math.random() - 0.5) * 100
+    const randomZ = (Math.random() - 0.5) * 100
+    newInvader.position.set(randomX, randomY, randomZ)
+    newInvader.lookAt(0,0,0)
+
+    scene.add(newInvader)
   }
 }
 
@@ -300,51 +358,65 @@ function render() {
 
   controls.update();
 
-  const delta = clock.getDelta() * 0.8 // slow down simulation
+  const delta = clock.getDelta()
 
-  const range = 6 - radius
-
-  //loop to check the position of every item and to bounce of the room
-  for (let i = 0; i < room.children.length; i++) {
-    const object = room.children[i]
-
-    //update position with velocity and uses delta to slow down.
+  for (let i = 0; i < floor.children.length; i++) {
+    const object = floor.children[i]
     object.position.x += object.userData.velocity.x * delta
-    object.position.y += object.userData.velocity.y * delta
-    object.position.z += object.userData.velocity.z * delta
-
-    // keep objects inside room
-    //for x coordinate
-    if (object.position.x < -range || object.position.x > range) {
-      object.position.x = THREE.MathUtils.clamp(
-        object.position.x,
-        -range,
-        range
-      )
-      object.userData.velocity.x = -object.userData.velocity.x
-    }
-    //for y coordinate
-    if (object.position.y < radius || object.position.y > 6) {
-      object.position.y = Math.max(object.position.y, radius)
-
-      object.userData.velocity.x *= 0.98
-      object.userData.velocity.y = -object.userData.velocity.y * 0.8
-      object.userData.velocity.z *= 0.98
-    }
-    //for z coordinate
-    if (object.position.z < -range || object.position.z > range) {
-      object.position.z = THREE.MathUtils.clamp(
-        object.position.z,
-        -range,
-        range
-      )
-      object.userData.velocity.z = -object.userData.velocity.z
-    }
-    
-
-    //gravity
-    object.userData.velocity.y -= 9.8 * delta
+    object.position.y += object.userData.velocity.y * delta 
+    object.position.z += object.userData.velocity.z * delta 
   }
 
   renderer.render(scene, camera)
 }
+
+
+/**
+ * Floor items animation
+ */
+
+ // const delta = clock.getDelta() * 0.8 // slow down simulation
+
+  // const range = 6 - radius
+
+  // //loop to check the position of every item and to bounce of the room
+  // for (let i = 0; i < room.children.length; i++) {
+  //   const object = room.children[i]
+
+  //   //update position with velocity and uses delta to slow down.
+  //   object.position.x += object.userData.velocity.x * delta
+  //   object.position.y += object.userData.velocity.y * delta
+  //   object.position.z += object.userData.velocity.z * delta
+
+  //   // keep objects inside room
+  //   //for x coordinate
+  //   if (object.position.x < -range || object.position.x > range) {
+  //     object.position.x = THREE.MathUtils.clamp(
+  //       object.position.x,
+  //       -range,
+  //       range
+  //     )
+  //     object.userData.velocity.x = -object.userData.velocity.x
+  //   }
+  //   //for y coordinate
+  //   if (object.position.y < radius || object.position.y > 6) {
+  //     object.position.y = Math.max(object.position.y, radius)
+
+  //     object.userData.velocity.x *= 0.98
+  //     object.userData.velocity.y = -object.userData.velocity.y * 0.8
+  //     object.userData.velocity.z *= 0.98
+  //   }
+  //   //for z coordinate
+  //   if (object.position.z < -range || object.position.z > range) {
+  //     object.position.z = THREE.MathUtils.clamp(
+  //       object.position.z,
+  //       -range,
+  //       range
+  //     )
+  //     object.userData.velocity.z = -object.userData.velocity.z
+  //   }
+    
+
+  //   //gravity
+  //   object.userData.velocity.y -= 9.8 * delta
+//}
