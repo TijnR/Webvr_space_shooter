@@ -6,7 +6,7 @@ import { XRControllerModelFactory } from 'three/examples/jsm/webxr/XRControllerM
 import { seededRandom } from 'three/src/math/MathUtils'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
-import { PlaneGeometry } from 'three'
+import { PlaneGeometry, Mesh } from 'three'
 
 //Setting up variables
 let camera, scene, renderer
@@ -22,6 +22,16 @@ let normal = new THREE.Vector3()
 const relativeVelocity = new THREE.Vector3()
 
 const clock = new THREE.Clock()
+
+//Colission
+let invader = null
+
+
+
+
+
+let loading = true
+const invaders = new THREE.Group()
 
 
 
@@ -89,8 +99,6 @@ function init() {
   // room.geometry.translate(0, 6, 0)
   // scene.add(room)
 
-  const particleTexture = new THREE.TextureLoader().load('/textures/particles/5.png')
-
   // floor = new THREE.Mesh(
   //   new PlaneGeometry(100, 100, 20, 20),
   //   new THREE.MeshStandardMaterial({map: floorTexture})
@@ -109,7 +117,7 @@ function init() {
   const geometry = new THREE.BoxGeometry(0.05, 0.05, 1)
   const lasersMaterial = new THREE.MeshBasicMaterial({color: 0x39ff14})
 
-  for (let i = 0; i < 200; i++) {
+  for (let i = 0; i < 100; i++) {
     const object = new THREE.Mesh(
       geometry,
       lasersMaterial
@@ -121,7 +129,10 @@ function init() {
     object.userData.velocity = new THREE.Vector3()
 
     floor.add(object)
+
   }
+
+
  
   /**
    * Renderer
@@ -241,16 +252,16 @@ function init() {
     '/models/space_invader/scene.gltf',
     (gltf) => {
       
-      const invader = gltf.scene
+      invader = gltf.scene
       invader.scale.set(0.05, 0.05, 0.05)
       invader.children[0].position.x = 3
-      scene.add(invader)
-      invader.position.z = 3
-      invader.position.y = 2
-
-      // generateInvaders(invader)
+      // scene.add(invader)
       
-
+      invader.position.z = -3
+      invader.position.y = 2
+    
+      generateInvaders(invader)
+      
     },
     (xhr) => {
       console.log((xhr.loaded / xhr.total) * 100 + '% loaded')
@@ -259,8 +270,6 @@ function init() {
       console.log('An error happened')
     }
   )
-
-  
   //resize event listener
   window.addEventListener('resize', onWindowResize)
 }
@@ -324,28 +333,58 @@ function handleController(controller) {
     controller.cooldown = true
     setTimeout(() => {
       controller.cooldown = false
-    }, 100)
+    }, 250)
   }
 }
 
-function generateInvaders(invader) {
-  const count = 50
+function generateInvaders(ginvader) {
+  const count = 25
+  var cubeGeometry = new THREE.BoxGeometry( 20, 15, 2 );
+  var wireMaterial = new THREE.MeshBasicMaterial( { color: 0xff0000, transparent: true, opacity: 0 } );
+  
 
   for (let i = 0; i < count; i++) {
-    const newInvader = invader.clone()
+    const hitboxInvader = new Mesh(cubeGeometry, wireMaterial)
+    const newInvader = ginvader.clone()
     const randomX = (Math.random() - 0.5) * 100
-    const randomY = (Math.random() - 0.5) * 100
+    const randomY = Math.random() * 30
     const randomZ = (Math.random() - 0.5) * 100
     newInvader.position.set(randomX, randomY, randomZ)
     newInvader.lookAt(0,0,0)
+    newInvader.add(hitboxInvader)
+    hitboxInvader.position.y = 5
 
-    scene.add(newInvader)
+    invaders.add(newInvader)
   }
+
+  scene.add(invaders)
+  loading = false
 }
 
 //Function that will make sure the scene runs smooth on every frame
 function animate() {
   renderer.setAnimationLoop(render)
+}
+
+function detectCollisionCubes(object1, object2){
+  object1.geometry.computeBoundingBox(); //not needed if its already calculated
+  object2.children[1].geometry.computeBoundingBox();
+  object1.updateMatrixWorld();
+  object2.children[1].updateMatrixWorld();
+  
+  var box1 = object1.geometry.boundingBox.clone();
+  box1.applyMatrix4(object1.matrixWorld);
+
+  var box2 = object2.children[1].geometry.boundingBox.clone();
+  box2.applyMatrix4(object2.matrixWorld);
+
+  if(box1.intersectsBox(box2)){
+    resetInvader(object2)
+  }
+}
+
+function resetInvader(invader) {
+  invader.position.y = 110
 }
 
 //This render function is invoked on each render, so on every frame on the computer. Here i update data thats needs to be updated on every frame
@@ -365,7 +404,17 @@ function render() {
     object.position.x += object.userData.velocity.x * delta
     object.position.y += object.userData.velocity.y * delta 
     object.position.z += object.userData.velocity.z * delta 
+
+    if(!loading) {
+      // console.log(invaders.children);
+      invaders.children.forEach((invader) => {
+        detectCollisionCubes(object, invader)
+      })
+    }
+    
   }
+  
+  
 
   renderer.render(scene, camera)
 }
